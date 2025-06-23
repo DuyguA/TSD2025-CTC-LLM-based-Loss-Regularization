@@ -10,7 +10,13 @@ Our work presents a novel auxiliary loss framework called Language-Aware Interme
 <img src="images/model.png" width=500></img>
 </p>
 
-## Setup
+
+## Results at a glance
+
+## Running the experiment
 For firing up the experiment run `run.sh` directly. 
+
+
+
 
 
