@@ -1,19 +1,25 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import LLamaTokenizer
+from transformers import LlamaTokenizer, LlamaForCausalLM
 
-class CombinedCTCLMLoss(nn.Module):
-  def __init__(self, llama_model, llama_tokenizer, lambda_llm=0.5):
-      super(CombinedCTCLMLoss, self).__init__()
-      self.lambda_llm = lambda_llm
-      self.llama_model = llama_model
-      self.llama_tokenizer = llama_tokenizer
-      
-  def forward(self, encoder_outputs, intermediate_outputs, input_lengths, target_texts, target_lengths):
-      """
+
+class ProjectedCTCLLMLoss(nn.Module):
+    def __init__(self, tokenizer, llm_model, lambda_llm=0.5):
+        """
         Args:
-            encoder_outputs: Final encoder outputs (B, T, C).
+            lambda_llm: Weight for the LLM loss in the total loss.
+        """
+        super(ProjectedCTCLLMLoss, self).__init__()
+        self.ctc_loss_fn = nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)  # CTC Loss
+        self.lambda_llm = lambda_llm  # Weight for LLM loss
+        self.llm_model = llm_model
+        self.tokenizer = tokenizer
+
+    def forward(self, encoder_outputs, intermediate_outputs, input_lengths, target_texts, target_lengths):
+        """
+        Args:
+            encoder_outputs: Final encoder outputs (T, N, C).
             intermediate_outputs: List of intermediate encoder outputs (from selected layers).
             input_lengths: Lengths of the audio inputs.
             target_texts: Ground truth transcriptions for the batch.
@@ -24,43 +30,33 @@ class CombinedCTCLMLoss(nn.Module):
         Returns:
             total_loss: Combined loss (CTC + LLM).
         """
-      tokenized_targets = self.llama_tokenizer(target_texts, return_tensors="pt", padding=True, truncation=True)
-      target_indices = tokenized_targets["input_ids"].to(encoder_outputs.device)
-      target_lengths = tokenized_targets["attention_mask"].sum(dim=1).to(encoder_outputs.device)  # Lengths
+        # ----- Step 1: Compute CTC Loss -----
+        # Convert target texts to indices for CTC loss
+        target_indices = [torch.tensor(tokenizer.encode(text)) for text in target_texts]
+        target_indices = torch.cat(target_indices).to(encoder_outputs.device)
+        target_lengths = torch.tensor([len(text) for text in target_texts]).to(encoder_outputs.device)
 
-      encoder_outputs = encoder_outputs.permute(1, 0, 2) # Encoder outputs to (T, B, C) for ctc loss 
+        # Reshape encoder logits (T, N, C) for CTC loss
+        log_probs = F.log_softmax(encoder_outputs, dim=-1)  # Final encoder log probabilities
+        ctc_loss = self.ctc_loss_fn(log_probs, target_indices, input_lengths, target_lengths)
 
-      # Reshape encoder logits for CTC loss
-      log_probs = F.log_softmax(encoder_outputs, dim=-1)
-      ctc_loss = self.ctc_loss_fn(log_probs, target_indices, input_lengths, target_lengths)
+        # ----- Step 2: Compute LLM Loss for Intermediate Layers -----
+        llm_losses = []
+        llm_labels = self.tokenizer(target_texts, return_tensors="pt", padding=True, truncation=True).to(encoder_outputs.device)
 
-
-      # Now compute LLM loss for intermediate layers
-      llm_losses = []
-      for i,layer_output enumerate(intermediate_outputs):
-          logits = F.log_softmax(layer_output, dim=-1)  # (B, T, Vocab)
-          predicted_ids = torch.argmax(logits, dim=-1)  # (B, T)
-          decoded_hypotheses = self.llama_tokenizer.batch_decode(predicted_ids,
-                                                                 skip_special_tokens=True)
-
-
-          llm_inputs = self.llm_tokenizer(decoded_hypotheses,
-                                          return_tensors="pt", padding=True,
-                                          truncation=True).to(self.llama_model.device)
-          llm_labels = self.llm_tokenizer(target_texts, return_tensors="pt",
-                                          padding=True,
-                                          truncation=True).to(self.llama_model.device)
-          llm_labels["input_ids"][llm_labels["attention_mask"] == 0] = -100
-
-          # Compute LLM loss using the model's internal loss
-          outputs = llm_model(**llm_inputs, labels=llm_labels["input_ids"])
-          llm_losses.append(outputs.loss)
+        for layer_output in intermediate_outputs:  # Loop over intermediate layers
+            # Pass projected intermediate outputs into LLM
+            outputs = self.llm_model(inputs_embeds=layer_output, labels=llm_labels["input_ids"])
+            
+            # Extract loss from LLM
+            llm_losses.append(outputs.loss)
 
         # Average LLM losses across layers
-      avg_llm_loss = torch.stack(llm_losses).mean()
+        avg_llm_loss = torch.stack(llm_losses).mean()
 
         # ----- Step 3: Combine Losses -----
-      total_loss = ctc_loss + self.lambda_llm * avg_llm_loss
-      return total_loss
+        total_loss = ctc_loss + self.lambda_llm * avg_llm_loss
+        return total_loss
+
 
 
