@@ -7,7 +7,7 @@ Our work presents a novel auxiliary loss framework called Language-Aware Interme
 
 
 <p align="center">
-<img src="images/model.png" width=500></img>
+<img src="images/model.png" width=800></img>
 </p>
 
 
