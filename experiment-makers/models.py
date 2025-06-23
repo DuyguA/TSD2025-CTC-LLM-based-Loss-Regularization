@@ -7,7 +7,7 @@ class IntermediateWav2Vec2CTC(nn.Module):
         super(IntermediateWav2VecCTC, self).__init__()
         
         self.num_heads = num_heads
-        self.model = wav2vec_model
+        self.model = Wav2Vec2ConformerForCTC.from_pretrained("facebook/wav2vec2-conformer-rope-large-960h-ft")
         self.model.config.output_hidden_states = True
         encoder_dim = self.model.hidden_size
         self.projection_layers = nn.ModuleList([nn.Linear(encoder_dim, llm_dim) for _ in range(self.num_heads)]) # 4 intermediate heads
