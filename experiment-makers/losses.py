@@ -3,14 +3,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import LlamaTokenizer, LlamaForCausalLM
 
+llm_device = "cuda:1"
 
-class ProjectedCTCLLMLoss(nn.Module):
+class CombinedCTCLMLoss(nn.Module):
     def __init__(self, tokenizer, llm_model, lambda_llm=0.5):
         """
         Args:
             lambda_llm: Weight for the LLM loss in the total loss.
         """
-        super(ProjectedCTCLLMLoss, self).__init__()
+        super(CombinedCTCLLMLoss, self).__init__()
         self.ctc_loss_fn = nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)  # CTC Loss
         self.lambda_llm = lambda_llm  # Weight for LLM loss
         self.llm_model = llm_model
@@ -46,7 +47,7 @@ class ProjectedCTCLLMLoss(nn.Module):
 
         for layer_output in intermediate_outputs:  # Loop over intermediate layers
             # Pass projected intermediate outputs into LLM
-            outputs = self.llm_model(inputs_embeds=layer_output, labels=llm_labels["input_ids"])
+            outputs = self.llm_model(inputs_embeds=layer_output.to(llm_device), labels=llm_labels["input_ids"])
             
             # Extract loss from LLM
             llm_losses.append(outputs.loss)
@@ -55,7 +56,7 @@ class ProjectedCTCLLMLoss(nn.Module):
         avg_llm_loss = torch.stack(llm_losses).mean()
 
         # ----- Step 3: Combine Losses -----
-        total_loss = ctc_loss + self.lambda_llm * avg_llm_loss
+        total_loss = ctc_loss.to(llm_device) + self.lambda_llm * avg_llm_loss
         return total_loss
 
 
