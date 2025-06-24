@@ -17,7 +17,7 @@ class CombinedCTCLMLoss(nn.Module):
         self.llm_model = llm_model
         self.tokenizer = tokenizer
 
-    def forward(self, encoder_outputs, intermediate_outputs, input_lengths, target_texts, target_lengths):
+    def forward(self, encoder_outputs, intermediate_outputs, input_lengths, target_texts):
         """
         Args:
             encoder_outputs: Final encoder outputs (T, N, C).

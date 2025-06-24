@@ -1,27 +1,35 @@
+import torch
 from torch.utils.data import DataLoader
 from datasets import load_dataset
+from transformers import Wav2Vec2Processor
+
+# Initialize the Wav2Vec2Processor
+processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-conformer-rope-large-960h-ft")
 
 def collate_fn(batch):
-    # Get audio and text from the batch
-    audio = [sample["audio"] for sample in batch]
+    # Extract audio and text from the batch
+    audio = [sample["audio"]["array"] for sample in batch]
     text = [sample["text"] for sample in batch]
-    
-    # Pad audio to the maximum length in the batch
-    audio_lengths = [waveform.size(0) for waveform in audio]
-    max_audio_length = max(audio_lengths)
-    padded_audio = torch.zeros(len(audio), max_audio_length)
-    for i, waveform in enumerate(audio):
-        padded_audio[i, :audio_lengths[i]] = waveform
+
+    # Process audio into input_ids and attention_mask using the processor
+    inputs = processor(audio, sampling_rate=16000, return_tensors="pt", padding=True)
+
+    # Extract input_ids and attention_mask from processed inputs
+    input_ids = inputs.input_values
+    attention_mask = inputs.attention_mask
+
+    # Compute audio lengths
+    audio_lengths = [len(waveform) for waveform in audio]
 
     return {
-        "audio": padded_audio,          # Padded audio tensor
+        "input_ids": input_ids,             # Input IDs for the model
+        "attention_mask": attention_mask,   # Attention mask for the model
         "audio_lengths": torch.tensor(audio_lengths),  # Lengths of each audio sample
-        "text": text                    # List of cleaned text transcripts
+        "text": text                        # List of cleaned text transcripts
     }
 
 def data_loader(dataset, batch_size):
     return DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn)
-
 
 def load_and_preprocess_dataset(dataset_name, split):
     """
