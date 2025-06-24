@@ -1,5 +1,5 @@
 # Boosting CTC-Based ASR Using LLM-Based Intermediate Loss Regularization
-This repository contains the codes for the TSD2025 paper paper [Boosting CTC-Based ASR Using LLM-Based Intermediate Loss Regularization](). 
+This repository contains the codes for the TSD2025 paper paper [Boosting CTC-Based ASR Using LLM-Based Intermediate Loss Regularization](). You can reach the preprint at [Arxiv]().
 
 ## Overview
 
@@ -11,12 +11,10 @@ Our work presents a novel auxiliary loss framework called Language-Aware Interme
 </p>
 
 
-## Results at a glance
-
 ## Running the experiment
 For firing up the experiment run `run.sh` directly. 
 
-
-
+## Citation
+Cming soon!
 
 
